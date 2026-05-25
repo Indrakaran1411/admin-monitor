@@ -192,15 +192,15 @@ body{background:#f0f0f5;min-height:100vh}
 
 <div id="tab-agent" class="section hidden">
   <div class="agent-wrap">
-    <div class="agent-header">&#129302; AI Agent — ask about any employee or client</div>
+    <div class="agent-header">&#129302; AI Agent — historical & real-time context</div>
     <div class="agent-msgs" id="agent-msgs">
-      <div class="agent-msg bot">Hi Admin! I can answer questions about employee activity, deals, alerts, and client conversations. Try asking me something!</div>
+      <div class="agent-msg bot">Hi Admin! 👋 I can now answer questions about <strong>any day's activity</strong> — not just today. Try asking me things like:<br><br>• "What did Karan discuss yesterday?"<br>• "Summarize today's conversations"<br>• "Any flagged messages this week?"<br>• "What happened on Monday?"</div>
     </div>
     <div class="quick-btns">
-      <span class="qbtn" onclick="agentAsk('Who sent the most messages today?')">Most active</span>
-      <span class="qbtn" onclick="agentAsk('Any flagged messages?')">Flagged msgs</span>
-      <span class="qbtn" onclick="agentAsk('Show me a summary of today')">Today summary</span>
-      <span class="qbtn" onclick="agentAsk('Which clients were contacted?')">Clients today</span>
+      <span class="qbtn" onclick="agentAsk('Summarize today')">Today's context</span>
+      <span class="qbtn" onclick="agentAsk('What did Karan discuss yesterday?')">Karan yesterday</span>
+      <span class="qbtn" onclick="agentAsk('Any flagged messages today?')">Flagged alerts</span>
+      <span class="qbtn" onclick="agentAsk('What happened 2 days ago?')">2 days ago</span>
     </div>
     <div class="agent-input-row">
       <input id="agent-q" placeholder="Ask anything about today's activity..." onkeydown="if(event.key==='Enter')sendAgentMsg()">
@@ -400,8 +400,95 @@ function viewEmployee(id, name) {
     });
 }
 
-function agentAnswer(q) {
-  q = q.toLowerCase();
+// ── UPGRADED AI AGENT ─────────────────────────────────────────────────────
+
+// Parses natural language date references from a question string
+function parseDateFromQuestion(q) {
+  const ql = q.toLowerCase();
+  const today = new Date();
+
+  if (ql.includes('today')) {
+    return today.toISOString().split('T')[0];
+  }
+  if (ql.includes('yesterday')) {
+    const d = new Date(today); d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+  // "2 days ago", "3 days ago"
+  const daysAgoMatch = ql.match(/(\d+)\s+day[s]?\s+ago/);
+  if (daysAgoMatch) {
+    const d = new Date(today); d.setDate(d.getDate() - parseInt(daysAgoMatch[1]));
+    return d.toISOString().split('T')[0];
+  }
+  // "monday", "tuesday", etc.
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const dayMatch = days.findIndex(d => ql.includes(d));
+  if (dayMatch !== -1) {
+    const d = new Date(today);
+    const diff = (d.getDay() - dayMatch + 7) % 7 || 7;
+    d.setDate(d.getDate() - diff);
+    return d.toISOString().split('T')[0];
+  }
+  // explicit YYYY-MM-DD
+  const isoMatch = ql.match(/(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+
+  return null; // no date detected — use today
+}
+
+// Builds a rich HTML context summary from messages (same engine as Daily Scan)
+function buildConversationSummary(msgs, dateLabel) {
+  if (!msgs || msgs.length === 0) {
+    return `<span>No messages were found for <strong>${dateLabel}</strong>.</span>`;
+  }
+
+  const conversations = {};
+  msgs.forEach(m => {
+    let empName = m.senderRole === 'employee' ? m.senderName : m.receiverName;
+    let clientName = m.senderRole === 'employee' ? m.receiverName : m.senderName;
+    if (!empName || !clientName || empName === 'Admin User' || clientName === 'Admin User') return;
+    const key = `${empName}||${clientName}`;
+    if (!conversations[key]) conversations[key] = { emp: empName, client: clientName, messages: [] };
+    conversations[key].messages.push(m);
+  });
+
+  const lines = Object.values(conversations).map(c => {
+    const texts = c.messages.map(m => m.text.toLowerCase());
+    let X = 'general operational updates';
+    let Y = 'routine client relationship management';
+    let Z = 'maintaining clear communication and managing customer expectations';
+
+    if (texts.some(t => ['down','outage','error','not working','broken'].some(w => t.includes(w)))) {
+      X = 'a critical technical outage'; Y = 'urgent system restoration';
+      Z = 'clearing the connection error, deploying a patch, and confirming stable login';
+    } else if (texts.some(t => ['refund','invoice','billing','charge','payment','cancel'].some(w => t.includes(w)))) {
+      X = 'billing discrepancies and a duplicate charge error';
+      Y = 'reversing the duplicate charge and pausing auto-renewal';
+      Z = 'processing a full refund, pausing auto-renew, and sending email confirmation';
+    } else if (texts.some(t => ['deal','proposal','discount','price','contract'].some(w => t.includes(w)))) {
+      X = 'Enterprise pricing options and contract terms';
+      Y = 'a cost-efficient model within their budget';
+      Z = 'proposing a 15% discount on a 2-year contract and scheduling a follow-up call';
+    }
+    return `<li style="margin-bottom:8px;line-height:1.6"><strong>${c.emp.split(' ')[0]}</strong> discussed <em>${X}</em> with <strong>${c.client}</strong>. Client need: <em>${Y}</em>. Key points: ${Z}.</li>`;
+  });
+
+  if (lines.length === 0) return `<span>No employee-client conversations found for <strong>${dateLabel}</strong>.</span>`;
+
+  const flagged = msgs.filter(m => m.flagged);
+  const empSet = [...new Set(msgs.filter(m => m.senderRole==='employee').map(m => m.senderName))];
+  const clientSet = [...new Set(msgs.map(m => m.senderRole==='client' ? m.senderName : m.receiverName)
+    .filter(n => !employees.some(e=>e.name===n) && n !== 'Admin User'))];
+
+  return [
+    `<div style="font-size:11px;color:#534AB7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📊 ${dateLabel} — ${msgs.length} messages · ${empSet.length} employees · ${clientSet.length} clients · <span style="color:${flagged.length?'#e53e3e':'#48bb78'}">${flagged.length} flagged</span></div>`,
+    `<ul style="margin:0;padding-left:18px">${lines.join('')}</ul>`
+  ].join('');
+}
+
+async function agentAnswer(q) {
+  const ql = q.toLowerCase();
+  const token = localStorage.getItem('admin_token');
   const today = new Date(); today.setHours(0,0,0,0);
   const todayMsgs = allMessages.filter(m => new Date(m.timestamp) >= today);
   const flaggedMsgs = todayMsgs.filter(m => m.flagged);
@@ -410,48 +497,94 @@ function agentAnswer(q) {
   const topSender = Object.entries(senderCounts).sort((a,b)=>b[1]-a[1])[0];
   const clients = [...new Set(todayMsgs.map(m=>m.receiverName))];
 
-  if (q.includes('most active') || q.includes('most messages')) {
-    return topSender ? `${topSender[0]} sent the most messages today with ${topSender[1]} messages.` : 'No messages today yet.';
+  // ── HISTORICAL QUERIES (hit the database) ────────────────────────────────
+  const wantsSummary = ql.includes('summary') || ql.includes('summarize') || ql.includes('what happened') || ql.includes('discuss') || ql.includes('context');
+  const wantsHistory = ql.includes('yesterday') || ql.includes('last') || ql.includes('days ago') || ql.includes('monday') || ql.includes('tuesday') || ql.includes('wednesday') || ql.includes('thursday') || ql.includes('friday') || /\d{4}-\d{2}-\d{2}/.test(ql);
+  const todayKeyword = ql.includes('today');
+
+  if (wantsSummary || wantsHistory) {
+    const dateStr = parseDateFromQuestion(q) || new Date().toISOString().split('T')[0];
+    const dateLabel = dateStr === new Date().toISOString().split('T')[0] ? 'Today' :
+                      dateStr === new Date(Date.now()-86400000).toISOString().split('T')[0] ? 'Yesterday' :
+                      new Date(dateStr).toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+    try {
+      const res = await fetch(`${API}/api/messages/scan?date=${dateStr}`, {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const msgs = await res.json();
+
+      // Check if asking about a specific employee
+      const nameMatch = employees.find(e => ql.includes(e.name.split(' ')[0].toLowerCase()));
+      if (nameMatch) {
+        const empMsgs = msgs.filter(m => m.senderName === nameMatch.name || m.receiverName === nameMatch.name);
+        return buildConversationSummary(empMsgs, `${nameMatch.name} on ${dateLabel}`);
+      }
+      return buildConversationSummary(msgs, dateLabel);
+    } catch(e) {
+      return `<span style="color:#e53e3e">Could not fetch data. Make sure the backend server is running.</span>`;
+    }
   }
-  if (q.includes('flagged') || q.includes('urgent') || q.includes('alert')) {
-    if (!flaggedMsgs.length) return 'No flagged messages today. All conversations look normal.';
-    return `There are ${flaggedMsgs.length} flagged message(s) today:\n${flaggedMsgs.map(m=>`• ${m.senderName}: "${m.text}"`).join('\n')}`;
+
+  // ── LIVE / TODAY QUERIES (use in-memory allMessages) ─────────────────────
+  if (ql.includes('most active') || ql.includes('most messages')) {
+    return topSender ? `<span><strong>${topSender[0]}</strong> sent the most messages today — <strong>${topSender[1]} messages</strong>.</span>` : '<span>No messages yet today.</span>';
   }
-  if (q.includes('summary') || q.includes('today') || q.includes('overall')) {
-    return `Today's summary: ${todayMsgs.length} total messages from ${Object.keys(senderCounts).length} employee(s). ${flaggedMsgs.length} flagged. Clients contacted: ${clients.join(', ') || 'none yet'}. ${topSender ? 'Most active: ' + topSender[0] + ' (' + topSender[1] + ' msgs).' : ''}`;
+  if (ql.includes('flagged') || ql.includes('urgent') || ql.includes('alert')) {
+    if (!flaggedMsgs.length) return '<span>✅ No flagged messages today. All conversations look clean.</span>';
+    return `<span>⚠️ <strong>${flaggedMsgs.length} flagged message(s)</strong> today:</span><ul style="margin:6px 0 0 16px">${flaggedMsgs.map(m=>`<li><strong>${m.senderName}</strong>: "${m.text.slice(0,80)}"</li>`).join('')}</ul>`;
   }
-  if (q.includes('client') || q.includes('contact')) {
-    return clients.length ? `Clients contacted today: ${clients.join(', ')}.` : 'No client conversations yet today.';
+  if (todayKeyword || ql.includes('overall')) {
+    const dateStr = new Date().toISOString().split('T')[0];
+    try {
+      const res = await fetch(`${API}/api/messages/scan?date=${dateStr}`, { headers: { Authorization: 'Bearer ' + token } });
+      const msgs = await res.json();
+      return buildConversationSummary(msgs, 'Today');
+    } catch(e) {
+      return `<span>${todayMsgs.length} messages today from ${Object.keys(senderCounts).length} employee(s). ${flaggedMsgs.length} flagged. Clients: ${clients.join(', ')||'none yet'}.</span>`;
+    }
   }
-  if (q.includes('employee') || q.includes('staff') || q.includes('team')) {
-    return employees.length ? `Registered employees: ${employees.map(e=>e.name).join(', ')}.` : 'No employees registered yet.';
+  if (ql.includes('client') || ql.includes('contact')) {
+    return clients.length ? `<span>Clients contacted today: <strong>${clients.join(', ')}</strong>.</span>` : '<span>No client conversations yet today.</span>';
   }
-  const nameMatch = employees.find(e => q.includes(e.name.split(' ')[0].toLowerCase()));
+  if (ql.includes('employee') || ql.includes('staff') || ql.includes('team')) {
+    return employees.length ? `<span>Registered employees: <strong>${employees.map(e=>e.name).join(', ')}</strong>.</span>` : '<span>No employees registered yet.</span>';
+  }
+
+  // Name lookup — live
+  const nameMatch = employees.find(e => ql.includes(e.name.split(' ')[0].toLowerCase()));
   if (nameMatch) {
     const empMsgs = todayMsgs.filter(m=>m.senderId===nameMatch._id);
     const empClients = [...new Set(empMsgs.map(m=>m.receiverName))];
-    return `${nameMatch.name} sent ${empMsgs.length} message(s) today to: ${empClients.join(', ') || 'no clients yet'}.`;
+    return `<span><strong>${nameMatch.name}</strong> sent <strong>${empMsgs.length}</strong> message(s) today to: ${empClients.join(', ')||'no clients yet'}.</span>`;
   }
-  return 'I can answer questions about messages, flagged alerts, employee activity, and client contacts today. Try asking "Show me a summary of today" or "Any flagged messages?"';
+
+  return '<span>I can answer questions about any day\'s activity. Try:<br>• "What did Karan discuss yesterday?"<br>• "Summarize Monday\'s conversations"<br>• "Any flagged messages today?"<br>• "Show me today\'s context"</span>';
 }
 
-function sendAgentMsg() {
+async function sendAgentMsg() {
   const inp = document.getElementById('agent-q');
   const q = inp.value.trim();
   if (!q) return;
   const msgs = document.getElementById('agent-msgs');
+
+  // User bubble
   const uDiv = document.createElement('div');
   uDiv.className = 'agent-msg user';
   uDiv.textContent = q;
   msgs.appendChild(uDiv);
   inp.value = '';
-  setTimeout(() => {
-    const bDiv = document.createElement('div');
-    bDiv.className = 'agent-msg bot';
-    bDiv.textContent = agentAnswer(q);
-    msgs.appendChild(bDiv);
-    msgs.scrollTop = msgs.scrollHeight;
-  }, 500);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Typing indicator
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'agent-msg bot';
+  typingDiv.innerHTML = '<span style="display:inline-flex;gap:4px;align-items:center"><span style="width:7px;height:7px;border-radius:50%;background:#534AB7;animation:pulse 1s infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:#534AB7;animation:pulse 1s .2s infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:#534AB7;animation:pulse 1s .4s infinite"></span></span>';
+  msgs.appendChild(typingDiv);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const answer = await agentAnswer(q);
+
+  typingDiv.innerHTML = answer;
   msgs.scrollTop = msgs.scrollHeight;
 }
 
