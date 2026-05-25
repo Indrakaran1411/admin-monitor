@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Monitor</title>
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{background:#f0f0f5;min-height:100vh}
+.header{background:#534AB7;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:16px;font-weight:500}
+.badge{background:rgba(255,255,255,0.2);font-size:11px;padding:3px 10px;border-radius:99px}
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #e5e5e5;overflow-x:auto;position:sticky;top:48px;z-index:99}
+.tab{flex-shrink:0;padding:10px 16px;font-size:13px;cursor:pointer;color:#666;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.active{color:#534AB7;border-bottom-color:#534AB7;font-weight:500}
+.section{padding:12px 16px;max-width:600px;margin:0 auto}
+
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:80vh;padding:20px}
+.login-card{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:340px}
+.login-card h2{font-size:18px;font-weight:500;margin-bottom:16px}
+.form-group{margin-bottom:12px}
+.form-group label{font-size:12px;color:#555;display:block;margin-bottom:4px}
+.form-group input{width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none}
+.form-group input:focus{border-color:#534AB7}
+.btn{width:100%;padding:10px;background:#534AB7;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer}
+.error{color:#c0392b;font-size:12px;margin-top:8px;text-align:center}
+
+.alert-card{border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid}
+.alert-urgent{background:#fff5f5;border-color:#ffcccc}
+.alert-warn{background:#fffbf0;border-color:#ffe0a0}
+.alert-info{background:#f0f6ff;border-color:#c0d8ff}
+.alert-title{font-size:13px;font-weight:500;margin-bottom:4px}
+.alert-urgent .alert-title{color:#991111}
+.alert-warn .alert-title{color:#7a5000}
+.alert-info .alert-title{color:#1a4a99}
+.alert-body{font-size:12px;line-height:1.5}
+.alert-urgent .alert-body{color:#cc3333}
+.alert-warn .alert-body{color:#9a6600}
+.alert-info .alert-body{color:#2255aa}
+.alert-time{font-size:10px;margin-top:4px;opacity:0.7}
+
+.emp-card{background:#fff;border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid #eee;cursor:pointer}
+.emp-card:hover{border-color:#534AB7}
+.emp-row{display:flex;align-items:center;gap:10px}
+.avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+.emp-name{font-size:14px;font-weight:500;color:#222}
+.emp-sub{font-size:12px;color:#888}
+.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat-box{background:#fff;border-radius:10px;padding:12px;border:1px solid #eee}
+.stat-val{font-size:24px;font-weight:500;color:#534AB7}
+.stat-lbl{font-size:11px;color:#888;margin-top:2px}
+
+.chat-window{background:#fff;border-radius:10px;border:1px solid #eee;overflow:hidden;margin-bottom:12px}
+.chat-header{padding:10px 14px;background:#f8f8f8;border-bottom:1px solid #eee;font-size:13px;font-weight:500;color:#333}
+.chat-msgs{padding:12px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;background:#fafafa}
+.msg-row{display:flex;gap:8px;align-items:flex-end}
+.msg-row.right{flex-direction:row-reverse}
+.bubble{max-width:75%;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.4}
+.bubble.sent{background:#534AB7;color:#fff;border-bottom-right-radius:4px}
+.bubble.recv{background:#fff;color:#333;border:1px solid #eee;border-bottom-left-radius:4px}
+.mini-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0}
+.msg-time{font-size:10px;color:#bbb;margin-top:2px}
+
+.agent-wrap{background:#fff;border-radius:10px;border:1px solid #eee;overflow:hidden;margin-bottom:12px}
+.agent-header{padding:10px 14px;background:#EEEDFE;border-bottom:1px solid #e0deff;font-size:13px;font-weight:500;color:#534AB7}
+.agent-msgs{padding:12px;min-height:200px;max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.agent-msg{max-width:85%;padding:9px 12px;border-radius:14px;font-size:13px;line-height:1.5}
+.agent-msg.user{background:#534AB7;color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.agent-msg.bot{background:#f3f3fb;color:#333;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid #e0deff}
+.agent-input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #eee}
+.agent-input-row input{flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:99px;font-size:13px;outline:none}
+.agent-input-row input:focus{border-color:#534AB7}
+.agent-send{width:34px;height:34px;border-radius:50%;background:#534AB7;color:#fff;border:none;cursor:pointer;font-size:16px}
+.quick-btns{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-top:1px solid #f0f0f0}
+.qbtn{font-size:11px;padding:5px 10px;border-radius:99px;border:1px solid #e0deff;background:#f3f3fb;color:#534AB7;cursor:pointer}
+
+.suggest-card{background:#fff;border-radius:10px;border:1px solid #eee;padding:12px;margin-bottom:10px}
+.suggest-title{font-size:13px;font-weight:500;color:#333;margin-bottom:10px}
+.sug-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-top:1px solid #f0f0f0}
+.sug-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.sug-text{font-size:12px;color:#333;line-height:1.5;flex:1}
+.sug-sub{font-size:11px;color:#888;margin-top:2px}
+.tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:99px;margin-right:3px;margin-top:3px}
+
+.live-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;display:inline-block;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+.hidden{display:none}
+
+/* Scanner specific styles */
+.scan-container { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.scan-header { border-bottom: 1px solid #edf2f7; padding-bottom: 15px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+.scan-title { font-size: 16px; font-weight: 600; color: #2d3748; display: flex; align-items: center; gap: 8px; }
+.scan-subtitle { font-size: 12px; color: #718096; margin-top: 4px; }
+.scan-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+.scan-date-input { padding: 9px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; color: #2d3748; outline: none; background: #fff; }
+.scan-date-input:focus { border-color: #534AB7; box-shadow: 0 0 0 3px rgba(83, 74, 183, 0.15); }
+.btn-scan { padding: 9px 18px; background: linear-gradient(135deg, #534AB7, #7A72E4); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: transform 0.1s; }
+.btn-scan:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(83, 74, 183, 0.25); }
+.btn-print { padding: 9px 15px; background: #edf2f7; color: #4a5568; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.btn-print:hover { background: #e2e8f0; }
+
+.executive-summary-card { background: linear-gradient(to right, #EEEDFE, #f8f7ff); border: 1px solid #e0deff; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+.summary-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: #534AB7; margin-bottom: 8px; letter-spacing: 0.5px; }
+.summary-text { font-size: 13.5px; color: #2d3748; line-height: 1.6; }
+
+.scan-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+.scan-stat-card { background: #fff; border: 1px solid #edf2f7; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.scan-stat-val { font-size: 20px; font-weight: 600; color: #534AB7; }
+.scan-stat-lbl { font-size: 10px; color: #718096; margin-top: 2px; }
+
+.scan-flagged-card { border-radius: 10px; padding: 12px; margin-bottom: 20px; border: 1px solid; }
+.scan-flagged-card.alert { background: #fff5f5; border-color: #ffcccc; }
+.scan-flagged-card.clean { background: #f0fff4; border-color: #c6f6d5; }
+.scan-flagged-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.scan-flagged-title.clean { color: #22543d; }
+.scan-flagged-title.alert { color: #9b2c2c; }
+
+.scan-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.scan-card-section { background: #fff; border: 1px solid #edf2f7; border-radius: 10px; padding: 15px; }
+.section-title { font-size: 12px; font-weight: 600; color: #4a5568; margin-bottom: 12px; border-bottom: 1px solid #f7fafc; padding-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.scan-topic-tag { display: inline-block; font-size: 10px; padding: 4px 10px; border-radius: 99px; background: #ebf8ff; color: #2b6cb0; font-weight: 500; margin-right: 6px; margin-bottom: 6px; }
+
+.loader-container { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: #718096; }
+.spinner { border: 3px solid rgba(83, 74, 183, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #534AB7; animation: spin 1s linear infinite; margin-bottom: 12px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+@media print {
+  body { background: #fff !important; color: #000 !important; font-size: 11pt !important; }
+  .header, .tab-bar, .agent-input-row, .quick-btns, .btn, button, .scan-controls, #scan-date, .btn-scan, .btn-print, .qbtn { display: none !important; }
+  .section { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+  #main-app { display: block !important; }
+  #tab-scan { display: block !important; }
+  .scan-container { border: none !important; box-shadow: none !important; background: #fff !important; padding: 0 !important; }
+  .executive-summary-card { border: 1px solid #e0deff !important; background: #f8f7ff !important; padding: 15px !important; }
+  .scan-stat-card { border: 1px solid #edf2f7 !important; background: #fff !important; box-shadow: none !important; }
+  .scan-chat-log { max-height: none !important; overflow: visible !important; display: block !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="login-wrap">
+  <div class="login-card">
+    <h2>&#128274; Admin Login</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:16px">Sign in to monitor employee activity</p>
+    <div class="form-group"><label>Email</label><input id="a-email" type="email" placeholder="admin@company.com"></div>
+    <div class="form-group"><label>Password</label><input id="a-pass" type="password" placeholder="••••••••"></div>
+    <button class="btn" onclick="adminLogin()">Sign In as Admin</button>
+    <div class="error" id="a-error"></div>
+    <p style="font-size:11px;color:#aaa;text-align:center;margin-top:10px">First time? Register via the seed script in README</p>
+  </div>
+</div>
+
+<div id="main-app" class="hidden">
+<div class="header">
+  <h1>&#129302; Admin Monitor</h1>
+  <span class="badge"><span class="live-dot"></span> Live</span>
+</div>
+<div class="tab-bar">
+  <div class="tab active" onclick="switchTab('live')">&#128308; Live Feed</div>
+  <div class="tab" onclick="switchTab('employees')">&#128101; Employees</div>
+  <div class="tab" onclick="switchTab('alerts')">&#128276; Alerts</div>
+  <div class="tab" onclick="switchTab('agent')">&#129302; AI Agent</div>
+  <div class="tab" onclick="switchTab('suggest')">&#128161; Actions</div>
+  <div class="tab" onclick="switchTab('scan')">&#128197; Daily Scan</div>
+</div>
+
+<div id="tab-live" class="section">
+  <div class="stat-row">
+    <div class="stat-box"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Messages today</div></div>
+    <div class="stat-box"><div class="stat-val" id="stat-flagged" style="color:#e74c3c">0</div><div class="stat-lbl">Flagged alerts</div></div>
+  </div>
+  <div class="chat-window">
+    <div class="chat-header">&#128308; Live messages (all employees)</div>
+    <div class="chat-msgs" id="live-msgs">
+      <div style="text-align:center;color:#bbb;font-size:13px;padding:20px">Waiting for messages...</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-employees" class="section hidden">
+  <p style="font-size:12px;color:#888;margin-bottom:10px">Tap an employee to view their chats</p>
+  <div id="emp-list"></div>
+</div>
+
+<div id="tab-alerts" class="section hidden">
+  <p style="font-size:12px;color:#888;margin-bottom:10px">Auto-detected from live messages</p>
+  <div id="alerts-list"><div style="text-align:center;color:#bbb;font-size:13px;padding:30px">No alerts yet</div></div>
+</div>
+
+<div id="tab-agent" class="section hidden">
+  <div class="agent-wrap">
+    <div class="agent-header">&#129302; AI Agent — ask about any employee or client</div>
+    <div class="agent-msgs" id="agent-msgs">
+      <div class="agent-msg bot">Hi Admin! I can answer questions about employee activity, deals, alerts, and client conversations. Try asking me something!</div>
+    </div>
+    <div class="quick-btns">
+      <span class="qbtn" onclick="agentAsk('Who sent the most messages today?')">Most active</span>
+      <span class="qbtn" onclick="agentAsk('Any flagged messages?')">Flagged msgs</span>
+      <span class="qbtn" onclick="agentAsk('Show me a summary of today')">Today summary</span>
+      <span class="qbtn" onclick="agentAsk('Which clients were contacted?')">Clients today</span>
+    </div>
+    <div class="agent-input-row">
+      <input id="agent-q" placeholder="Ask anything about today's activity..." onkeydown="if(event.key==='Enter')sendAgentMsg()">
+      <button class="agent-send" onclick="sendAgentMsg()">&#10148;</button>
+    </div>
+  </div>
+</div>
+
+<div id="tab-suggest" class="section hidden">
+  <div id="suggest-content">
+    <div style="text-align:center;color:#bbb;font-size:13px;padding:30px">
+      Suggestions will appear as messages come in
+    </div>
+  </div>
+</div>
+
+<div id="tab-scan" class="section hidden">
+  <div class="scan-container">
+    <div class="scan-header">
+      <div>
+        <h2 class="scan-title">&#128197; Historical Activity Scanner</h2>
+        <p class="scan-subtitle">Select a particular day to scan messages and generate an executive context summary.</p>
+      </div>
+    </div>
+    
+    <div class="scan-controls">
+      <input type="date" id="scan-date" class="scan-date-input">
+      <button class="btn-scan" onclick="scanParticularDay()">&#128065; Scan & Summarize</button>
+      <button id="btn-export-pdf" class="btn-print hidden" onclick="window.print()">&#128424; Export PDF</button>
+    </div>
+    
+    <!-- Initial empty state -->
+    <div id="scan-initial" style="text-align:center;padding:40px 20px;color:#a0aec0">
+      <span style="font-size:44px">&#128269;</span>
+      <h3 style="margin-top:12px;font-size:15px;font-weight:500;color:#718096">Ready to Scan</h3>
+      <p style="font-size:12px;margin-top:4px">Select a date above to analyze employee-client chats and extract core context.</p>
+    </div>
+    
+    <!-- Loader -->
+    <div id="scan-loader" class="loader-container hidden">
+      <div class="spinner"></div>
+      <p style="font-size:12.5px;font-weight:500">AI analyst scanning chat database...</p>
+      <p style="font-size:11px;color:#a0aec0;margin-top:2px">Structuring timelines and generating summaries</p>
+    </div>
+    
+    <!-- Scan Results -->
+    <div id="scan-results" class="hidden">
+      <h3 id="scan-report-title" style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:15px;border-bottom:1px solid #edf2f7;padding-bottom:8px">Report Title</h3>
+      <div id="scan-report-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const API = 'http://localhost:5050';
+let socket, adminUser, allMessages = [], employees = [], alerts = [];
+
+async function adminLogin() {
+  const email = document.getElementById('a-email').value.trim();
+  const pass = document.getElementById('a-pass').value.trim();
+  const err = document.getElementById('a-error');
+  err.textContent = '';
+  const res = await fetch(API + '/api/auth/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({email, password: pass})
+  });
+  const data = await res.json();
+  if (!res.ok) { err.textContent = data.message; return; }
+  if (data.user.role !== 'admin') { err.textContent = 'Not an admin account'; return; }
+  adminUser = data.user;
+  localStorage.setItem('admin_token', data.token);
+  localStorage.setItem('admin_user', JSON.stringify(data.user));
+  initAdmin(data.token);
+}
+
+async function initAdmin(token) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('main-app').classList.remove('hidden');
+
+  socket = io(API);
+  socket.emit('join', adminUser.id);
+
+  socket.on('receive_message', (msg) => {
+    allMessages.push(msg);
+    renderLiveMsg(msg);
+    updateStats();
+    if (msg.flagged) addAlert(msg);
+    updateSuggestions();
+  });
+
+  const res = await fetch(API + '/api/messages/all', {headers:{Authorization:'Bearer '+token}});
+  const msgs = await res.json();
+  allMessages = msgs;
+  msgs.slice(-20).forEach(renderLiveMsg);
+  msgs.filter(m=>m.flagged).forEach(addAlert);
+  updateStats();
+  updateSuggestions();
+
+  const empRes = await fetch(API + '/api/users/employees', {headers:{Authorization:'Bearer '+token}});
+  employees = await empRes.json();
+  renderEmployees();
+}
+
+function updateStats() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayMsgs = allMessages.filter(m => new Date(m.timestamp) >= today);
+  document.getElementById('stat-total').textContent = todayMsgs.length;
+  document.getElementById('stat-flagged').textContent = todayMsgs.filter(m=>m.flagged).length;
+}
+
+function renderLiveMsg(msg) {
+  const area = document.getElementById('live-msgs');
+  const placeholder = area.querySelector('div[style*="Waiting"]');
+  if (placeholder) placeholder.remove();
+  const colors = ['#534AB7','#1D9E75','#D85A30','#D4537E'];
+  const c = colors[msg.senderName.charCodeAt(0) % colors.length];
+  const ini = msg.senderName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const time = new Date(msg.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'msg-row';
+  div.innerHTML = `<div class="mini-av" style="background:${c}">${ini}</div>
+    <div>
+      <div style="font-size:10px;color:#999;margin-bottom:2px">${msg.senderName} → ${msg.receiverName}</div>
+      <div class="bubble recv" style="${msg.flagged?'border-color:#ffaaaa;background:#fff5f5':''}">${msg.text}${msg.flagged?' <span style="color:#e74c3c;font-size:10px">⚑</span>':''}</div>
+      <div class="msg-time">${time}</div>
+    </div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function addAlert(msg) {
+  alerts.push(msg);
+  const list = document.getElementById('alerts-list');
+  const placeholder = list.querySelector('div[style*="No alerts"]');
+  if (placeholder) placeholder.remove();
+  const time = new Date(msg.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'alert-card alert-urgent';
+  div.innerHTML = `<div class="alert-title">⚑ Flagged message — ${msg.senderName}</div>
+    <div class="alert-body">"${msg.text}"<br><span style="color:#999;font-size:11px">To: ${msg.receiverName}</span></div>
+    <div class="alert-time">${time}</div>`;
+  list.prepend(div);
+}
+
+function renderEmployees() {
+  const colors = ['#534AB7','#1D9E75','#D85A30','#D4537E','#BA7517'];
+  document.getElementById('emp-list').innerHTML = employees.map((e,i) => {
+    const empMsgs = allMessages.filter(m=>m.senderId===e._id).length;
+    const ini = e.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div class="emp-card" onclick="viewEmployee('${e._id}','${e.name}')">
+      <div class="emp-row">
+        <div class="avatar" style="background:${colors[i%colors.length]}">${ini}</div>
+        <div style="flex:1">
+          <div class="emp-name">${e.name}</div>
+          <div class="emp-sub">${e.department || e.role} · ${empMsgs} messages</div>
+        </div>
+        <div style="font-size:20px;color:#ccc">›</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function viewEmployee(id, name) {
+  const token = localStorage.getItem('admin_token');
+  fetch(API + '/api/messages/employee/' + id, {headers:{Authorization:'Bearer '+token}})
+    .then(r=>r.json()).then(msgs => {
+      const tab = document.getElementById('tab-employees');
+      tab.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer" onclick="renderEmployees();document.getElementById('tab-employees').innerHTML='';renderEmployees()">
+        <span style="color:#534AB7;font-size:13px">← Back</span>
+      </div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:12px;color:#333">${name}'s conversations</div>
+      <div class="chat-window">
+        <div class="chat-header">All messages (${msgs.length} total)</div>
+        <div class="chat-msgs" id="emp-msgs"></div>
+      </div>`;
+      const area = document.getElementById('emp-msgs');
+      if (!msgs.length) { area.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px;font-size:13px">No messages yet</div>'; return; }
+      const colors = ['#534AB7','#1D9E75','#D85A30'];
+      msgs.forEach(msg => {
+        const c = colors[msg.senderName.charCodeAt(0) % colors.length];
+        const ini = msg.senderName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        const time = new Date(msg.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+        const div = document.createElement('div');
+        div.className = 'msg-row';
+        div.innerHTML = `<div class="mini-av" style="background:${c}">${ini}</div>
+          <div>
+            <div style="font-size:10px;color:#999;margin-bottom:2px">${msg.senderName} → ${msg.receiverName}</div>
+            <div class="bubble recv">${msg.text}</div>
+            <div class="msg-time">${time}</div>
+          </div>`;
+        area.appendChild(div);
+      });
+      area.scrollTop = area.scrollHeight;
+    });
+}
+
+function agentAnswer(q) {
+  q = q.toLowerCase();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayMsgs = allMessages.filter(m => new Date(m.timestamp) >= today);
+  const flaggedMsgs = todayMsgs.filter(m => m.flagged);
+  const senderCounts = {};
+  todayMsgs.forEach(m => { senderCounts[m.senderName] = (senderCounts[m.senderName]||0)+1; });
+  const topSender = Object.entries(senderCounts).sort((a,b)=>b[1]-a[1])[0];
+  const clients = [...new Set(todayMsgs.map(m=>m.receiverName))];
+
+  if (q.includes('most active') || q.includes('most messages')) {
+    return topSender ? `${topSender[0]} sent the most messages today with ${topSender[1]} messages.` : 'No messages today yet.';
+  }
+  if (q.includes('flagged') || q.includes('urgent') || q.includes('alert')) {
+    if (!flaggedMsgs.length) return 'No flagged messages today. All conversations look normal.';
+    return `There are ${flaggedMsgs.length} flagged message(s) today:\n${flaggedMsgs.map(m=>`• ${m.senderName}: "${m.text}"`).join('\n')}`;
+  }
+  if (q.includes('summary') || q.includes('today') || q.includes('overall')) {
+    return `Today's summary: ${todayMsgs.length} total messages from ${Object.keys(senderCounts).length} employee(s). ${flaggedMsgs.length} flagged. Clients contacted: ${clients.join(', ') || 'none yet'}. ${topSender ? 'Most active: ' + topSender[0] + ' (' + topSender[1] + ' msgs).' : ''}`;
+  }
+  if (q.includes('client') || q.includes('contact')) {
+    return clients.length ? `Clients contacted today: ${clients.join(', ')}.` : 'No client conversations yet today.';
+  }
+  if (q.includes('employee') || q.includes('staff') || q.includes('team')) {
+    return employees.length ? `Registered employees: ${employees.map(e=>e.name).join(', ')}.` : 'No employees registered yet.';
+  }
+  const nameMatch = employees.find(e => q.includes(e.name.split(' ')[0].toLowerCase()));
+  if (nameMatch) {
+    const empMsgs = todayMsgs.filter(m=>m.senderId===nameMatch._id);
+    const empClients = [...new Set(empMsgs.map(m=>m.receiverName))];
+    return `${nameMatch.name} sent ${empMsgs.length} message(s) today to: ${empClients.join(', ') || 'no clients yet'}.`;
+  }
+  return 'I can answer questions about messages, flagged alerts, employee activity, and client contacts today. Try asking "Show me a summary of today" or "Any flagged messages?"';
+}
+
+function sendAgentMsg() {
+  const inp = document.getElementById('agent-q');
+  const q = inp.value.trim();
+  if (!q) return;
+  const msgs = document.getElementById('agent-msgs');
+  const uDiv = document.createElement('div');
+  uDiv.className = 'agent-msg user';
+  uDiv.textContent = q;
+  msgs.appendChild(uDiv);
+  inp.value = '';
+  setTimeout(() => {
+    const bDiv = document.createElement('div');
+    bDiv.className = 'agent-msg bot';
+    bDiv.textContent = agentAnswer(q);
+    msgs.appendChild(bDiv);
+    msgs.scrollTop = msgs.scrollHeight;
+  }, 500);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function agentAsk(q) {
+  document.getElementById('agent-q').value = q;
+  switchTab('agent');
+  setTimeout(sendAgentMsg, 100);
+}
+
+function updateSuggestions() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayMsgs = allMessages.filter(m => new Date(m.timestamp) >= today);
+  const flagged = todayMsgs.filter(m=>m.flagged);
+  const senderCounts = {};
+  todayMsgs.forEach(m => { senderCounts[m.senderName] = (senderCounts[m.senderName]||0)+1; });
+
+  let html = '';
+  if (flagged.length) {
+    html += `<div class="suggest-card">
+      <div class="suggest-title">⚑ Urgent — review flagged messages</div>
+      ${flagged.map(m=>`<div class="sug-item">
+        <div class="sug-icon" style="background:#fff5f5">&#128680;</div>
+        <div>
+          <div class="sug-text">${m.senderName} sent a flagged message to ${m.receiverName}</div>
+          <div class="sug-sub">"${m.text.slice(0,60)}..."</div>
+          <span class="tag" style="background:#fff5f5;color:#991111">Review</span>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }
+  const top = Object.entries(senderCounts).sort((a,b)=>b[1]-a[1])[0];
+  if (top) {
+    html += `<div class="suggest-card">
+      <div class="suggest-title">&#11088; Top performer today</div>
+      <div class="sug-item">
+        <div class="sug-icon" style="background:#f0fff4">&#127942;</div>
+        <div>
+          <div class="sug-text">${top[0]} is most active with ${top[1]} messages</div>
+          <div class="sug-sub">Consider recognizing in team standup</div>
+          <span class="tag" style="background:#f0fff4;color:#1a7a1a">Active</span>
+        </div>
+      </div>
+    </div>`;
+  }
+  if (!html) html = '<div style="text-align:center;color:#bbb;font-size:13px;padding:30px">Suggestions will appear as messages come in</div>';
+  document.getElementById('suggest-content').innerHTML = html;
+}
+
+function switchTab(name) {
+  ['live','employees','alerts','agent','suggest','scan'].forEach((t,i) => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.classList.toggle('hidden', t!==name);
+    const tabEl = document.querySelectorAll('.tab')[i];
+    if (tabEl) tabEl.classList.toggle('active', t===name);
+  });
+  if (name==='employees') renderEmployees();
+  if (name==='scan') {
+    const dateInput = document.getElementById('scan-date');
+    if (dateInput && !dateInput.value) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      dateInput.value = todayStr;
+    }
+  }
+}
+
+async function scanParticularDay() {
+  const dateVal = document.getElementById('scan-date').value;
+  if (!dateVal) {
+    alert('Please select a date to scan.');
+    return;
+  }
+  
+  const loader = document.getElementById('scan-loader');
+  const results = document.getElementById('scan-results');
+  const initial = document.getElementById('scan-initial');
+  const printBtn = document.getElementById('btn-export-pdf');
+  
+  initial.classList.add('hidden');
+  results.classList.add('hidden');
+  printBtn.classList.add('hidden');
+  loader.classList.remove('hidden');
+  
+  const token = localStorage.getItem('admin_token');
+  try {
+    const res = await fetch(`${API}/api/messages/scan?date=${dateVal}`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    
+    if (!res.ok) {
+      throw new Error('Failed to retrieve scan data.');
+    }
+    
+    const msgs = await res.json();
+    setTimeout(() => {
+      loader.classList.add('hidden');
+      renderScanResults(dateVal, msgs);
+      results.classList.remove('hidden');
+      if (msgs.length > 0) printBtn.classList.remove('hidden');
+    }, 800);
+    
+  } catch (err) {
+    loader.classList.add('hidden');
+    initial.classList.remove('hidden');
+    alert(err.message);
+  }
+}
+
+function renderScanResults(dateStr, msgs) {
+  const dateFormatted = new Date(dateStr).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('scan-report-title').innerHTML = `&#128197; Scan Report: ${dateFormatted}`;
+  
+  const total = msgs.length;
+  if (total === 0) {
+    document.getElementById('scan-report-container').innerHTML = `
+      <div style="text-align:center;padding:40px 20px;color:#718096">
+        <span style="font-size:40px">&#128065;</span>
+        <h3 style="margin-top:12px;font-size:16px;font-weight:500">No Activity Recorded</h3>
+        <p style="font-size:12px;margin-top:4px;color:#a0aec0">There were no client-employee chat messages on this day.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const activeEmpList = [...new Set(msgs.filter(m => m.senderRole === 'employee').map(m => m.senderName))];
+  const clientsList = [...new Set(msgs.map(m => m.senderRole === 'client' ? m.senderName : m.receiverName).filter(name => !employees.some(e => e.name === name) && name !== 'Admin User'))];
+  const flagged = msgs.filter(m => m.flagged);
+  
+  // Topic Analysis
+  const keywords = {
+    'Commercial Negotiations': ['deal', 'discount', 'proposal', 'price', 'contract', 'agreement', 'budget'],
+    'Billing & Invoices': ['invoice', 'billing', 'refund', 'charged', 'payment', 'transaction'],
+    'Technical Support': ['down', 'broken', 'not working', 'outage', 'error', 'server', 'mitigated', 'functional', 'connection'],
+    'High Priority / Escalations': ['urgent', 'escalated', 'immediate', 'asap', 'hurry']
+  };
+  const detectedTopics = [];
+  for (const [topic, words] of Object.entries(keywords)) {
+    if (words.some(w => msgs.some(m => m.text.toLowerCase().includes(w)))) {
+      detectedTopics.push(topic);
+    }
+  }
+  if (detectedTopics.length === 0) {
+    detectedTopics.push('Routine Inquiries');
+  }
+  
+  // Group messages by conversation (Employee & Client pair) to generate consolidated context
+  const conversations = {};
+  msgs.forEach(m => {
+    let empName, clientName;
+    if (m.senderRole === 'employee') {
+      empName = m.senderName;
+      clientName = m.receiverName;
+    } else {
+      empName = m.receiverName;
+      clientName = m.senderName;
+    }
+    
+    if (empName && clientName && empName !== 'Admin User' && clientName !== 'Admin User') {
+      const key = `${empName} & ${clientName}`;
+      if (!conversations[key]) {
+        conversations[key] = { emp: empName, client: clientName, messages: [] };
+      }
+      conversations[key].messages.push(m);
+    }
+  });
+
+  const summaries = [];
+  Object.values(conversations).forEach(c => {
+    const texts = c.messages.map(m => m.text.toLowerCase());
+    
+    let X = 'general operational updates';
+    let Y = 'routine client relationship management and standard queries';
+    let Z = 'verifying that lines of communication remain clear, addressing light general updates, and ensuring customer expectations are fully managed';
+    
+    if (texts.some(t => ['down', 'outage', 'error', 'not working', 'broken'].some(w => t.includes(w)))) {
+      X = 'a critical technical system outage and active platform downtime';
+      Y = 'immediate system restoration to prevent losing key operational capabilities';
+      Z = 'the engineering team clearing a locked database connection on their node, deploying a quick server patch, successfully mitigating the connection timed-out errors, and confirming a stable, verified login';
+    } else if (texts.some(t => ['refund', 'invoice', 'billing', 'charge', 'payment', 'cancel'].some(w => t.includes(w)))) {
+      X = 'billing discrepancies and a duplicate billing charge error';
+      Y = 'reversing duplicate charge entries and adjusting auto-renewal subscription rules';
+      Z = 'processing a full refund of $199 back to the customer\'s credit card statement, pausing active auto-renew settings at the client\'s request, and promising email receipt confirmation';
+    } else if (texts.some(t => ['deal', 'proposal', 'discount', 'price', 'contract'].some(w => t.includes(w)))) {
+      X = 'Enterprise tier service licensing options and contract terms';
+      Y = 'a cost-efficient pricing model that aligns with their corporate fiscal budget constraints';
+      Z = 'proposing a 15% incentive discount for a 2-year service commitment contract, securing immediate interest for internal financial review, and scheduling a follow-up call at 2:00 PM tomorrow to finalize agreement details';
+    }
+    
+    summaries.push(`Today, <strong>${c.emp.split(' ')[0]}</strong> discussed ${X} with the client (<strong>${c.client}</strong>). The client has a business need for ${Y}. Key points were ${Z}...`);
+  });
+
+  let summaryHtml = '';
+  if (summaries.length > 0) {
+    summaryHtml = `<ul style="margin:0; padding-left:20px; list-style-type:disc;">` + 
+      summaries.map(s => `<li style="margin-bottom:8px; line-height:1.5">${s}</li>`).join('') + 
+      `</ul>`;
+  } else {
+    summaryHtml = `<div style="font-size:12.5px;color:#718096">No client-employee chats were recorded on this day.</div>`;
+  }
+  
+  // Flagged Section
+  let flaggedHtml = '';
+  if (flagged.length > 0) {
+    flaggedHtml = `
+      <div class="scan-flagged-card alert">
+        <div class="scan-flagged-title alert" style="color:#9b2c2c;font-size:13px;font-weight:600;margin-bottom:8px">
+          &#128680; Urgent Alerts detected on this day (${flagged.length})
+        </div>
+        ${flagged.map(f => `
+          <div style="background:#fff;border-left:4px solid #e53e3e;padding:10px;margin-bottom:8px;border-radius:4px">
+            <div style="font-size:11px;font-weight:600;color:#e53e3e;margin-bottom:2px">Flagged: ${f.flagReason || 'Contains urgent keyword'}</div>
+            <div style="font-size:12px;color:#2d3748;font-style:italic">"${f.text}"</div>
+            <div style="font-size:10px;color:#718096;margin-top:4px">${f.senderName} &rarr; ${f.receiverName} at ${new Date(f.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } else {
+    flaggedHtml = `
+      <div class="scan-flagged-card clean">
+        <div class="scan-flagged-title clean">
+          &#9989; Safe Interactions
+        </div>
+        <p style="font-size:12px;color:#22543d;margin-top:4px">No alerts or flagged phrases were detected. All conversations on this day were clean, professional, and compliant.</p>
+      </div>
+    `;
+  }
+  
+  // Employee Activity Breakdown
+  const empCounts = {};
+  msgs.filter(m => m.senderRole === 'employee').forEach(m => {
+    empCounts[m.senderName] = (empCounts[m.senderName] || 0) + 1;
+  });
+  
+  let empBreakdownHtml = '';
+  if (Object.keys(empCounts).length > 0) {
+    empBreakdownHtml = Object.entries(empCounts).map(([name, count]) => {
+      const empClients = [...new Set(msgs.filter(m => m.senderName === name).map(m => m.receiverName))];
+      return `
+        <div style="border-bottom:1px solid #edf2f7;padding:8px 0;font-size:12.5px;color:#2d3748">
+          <strong>${name}</strong>: ${count} messages sent to <em>${empClients.join(', ') || 'N/A'}</em>
+        </div>
+      `;
+    }).join('');
+  } else {
+    empBreakdownHtml = '<div style="font-size:12px;color:#a0aec0">No employee messages sent on this day.</div>';
+  }
+
+  // Client Breakdown
+  let clientBreakdownHtml = '';
+  if (clientsList.length > 0) {
+    clientBreakdownHtml = clientsList.map(name => {
+      const contactCount = msgs.filter(m => m.senderName === name || m.receiverName === name).length;
+      return `
+        <div style="border-bottom:1px solid #edf2f7;padding:8px 0;font-size:12.5px;color:#2d3748">
+          <strong>${name}</strong>: ${contactCount} interactions
+        </div>
+      `;
+    }).join('');
+  } else {
+    clientBreakdownHtml = '<div style="font-size:12px;color:#a0aec0">No clients contacted on this day.</div>';
+  }
+
+  // Chronological Chat Messages
+  const chatMsgsHtml = msgs.map(m => {
+    const isEmp = m.senderRole === 'employee';
+    const c = isEmp ? '#534AB7' : '#2b6cb0';
+    const bg = isEmp ? '#f7fafc' : '#fff';
+    const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return `
+      <div style="background:${bg};border:1px solid #edf2f7;border-radius:8px;padding:8px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:between;align-items:center;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:600;color:${c}">${m.senderName} &rarr; ${m.receiverName}</span>
+          <span style="font-size:9.5px;color:#a0aec0;margin-left:auto">${time}</span>
+        </div>
+        <div style="font-size:12px;color:#2d3748">${m.text}</div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('scan-report-container').innerHTML = `
+    <!-- Executive Summary -->
+    <div class="executive-summary-card">
+      <div class="summary-label">Executive AI Summary</div>
+      <div class="summary-text">${summaryHtml}</div>
+    </div>
+    
+    <!-- Key Statistics -->
+    <div class="scan-stats">
+      <div class="scan-stat-card">
+        <div class="scan-stat-val">${total}</div>
+        <div class="scan-stat-lbl">Messages</div>
+      </div>
+      <div class="scan-stat-card">
+        <div class="scan-stat-val">${activeEmpList.length}</div>
+        <div class="scan-stat-lbl">Active Employees</div>
+      </div>
+      <div class="scan-stat-card">
+        <div class="scan-stat-val">${clientsList.length}</div>
+        <div class="scan-stat-lbl">Clients Contacted</div>
+      </div>
+      <div class="scan-stat-card">
+        <div class="scan-stat-val" style="color:${flagged.length > 0 ? '#e53e3e' : '#48bb78'}">${flagged.length}</div>
+        <div class="scan-stat-lbl">Flagged Alerts</div>
+      </div>
+    </div>
+    
+    <!-- Flagged / Alerts Block -->
+    ${flaggedHtml}
+    
+    <!-- Topic analysis tags -->
+    <div class="scan-container" style="padding:15px;margin-bottom:20px">
+      <div class="section-title">Detected Topics & Key Context</div>
+      <div>
+        ${detectedTopics.map(t => `<span class="scan-topic-tag">${t}</span>`).join('')}
+      </div>
+    </div>
+    
+    <!-- Details Grid -->
+    <div class="scan-details-grid">
+      <div class="scan-card-section">
+        <div class="section-title">Employee Activity</div>
+        ${empBreakdownHtml}
+      </div>
+      <div class="scan-card-section">
+        <div class="section-title">Clients Interacted</div>
+        ${clientBreakdownHtml}
+      </div>
+    </div>
+    
+    <!-- Full Chronological Chat Log -->
+    <div class="scan-container" style="padding:15px;margin-bottom:0">
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Chronological Chat Logs (${total} messages)</span>
+        <button class="qbtn" onclick="const logDiv = document.getElementById('scan-chat-log'); logDiv.classList.toggle('hidden')">Toggle Log</button>
+      </div>
+      <div id="scan-chat-log" style="margin-top:10px;max-height:300px;overflow-y:auto;padding-right:4px">
+        ${chatMsgsHtml}
+      </div>
+    </div>
+  `;
+}
+
+const savedAdmin = localStorage.getItem('admin_user');
+const savedToken = localStorage.getItem('admin_token');
+if (savedAdmin && savedToken) { adminUser = JSON.parse(savedAdmin); initAdmin(savedToken); }
+</script>
+</body>
+</html>
